@@ -6,3 +6,4 @@
 
 yfinance>=0.2      # canlı fiyat ve temel veri (internet ister)
 streamlit>=1.30    # web arayüzü (telefon tarayıcısından da açılır)
+pandas>=1.5        # panel tabloları + renklendirme

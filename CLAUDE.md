@@ -80,7 +80,10 @@ python3 -m unittest discover -s testler -v
   EMİR YOK. İmza resmî test vektörüyle doğrulandı. Anahtar Streamlit secrets'ta (BINANCE_API_KEY/SECRET),
   yalnız 'Enable Reading' izinli. NOT: Streamlit Cloud ABD IP'li olabilir → Binance API coğrafi engelleyebilir;
   o durumda app'i kullanıcının kendi makinesinde çalıştır (yerel IP).
-- 122 test yeşil. `unittest`. Tüm çekirdek mantık saf + test edilmiş.
+- PROFESYONEL PANEL (v2): `arayuz/app.py` sekmeli — Öneriler · Kripto · BIST · ABD · Tek Analiz · Binance.
+  Pazar panelleri fiyat+günlük%+sinyal (renkli tablo). `yatirim/evren/listeler.py` (KRIPTO/ABD/BIST100).
+  Panel taramaları buton-tetikli + `st.cache_data(ttl=300)`; hız için temel analiz opsiyonel (temel_dahil).
+- 130 test yeşil. `unittest`. Tüm çekirdek mantık saf + test edilmiş.
 - CANLI VERİ eklendi: `yatirim/veri/canli.py` (yfinance) — fiyat geçmişi + temel veri.
   ABD/BIST/kripto/metal. BIST için `bist_sembol()` (.IS eki).
 - TEKNİK genişledi: SMA, EMA, RSI, MACD, Bollinger, Stokastik.

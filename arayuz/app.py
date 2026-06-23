@@ -1,13 +1,11 @@
-"""YATIRIM — Web arayüzü (Streamlit).
+"""YATIRIM — Profesyonel panel (Streamlit).
 
-Çalıştırma (proje kökünde):
-    streamlit run arayuz/app.py
-
-Telefon: bilgisayar ve telefon AYNI WiFi'deyse, Streamlit'in verdiği
-'Network URL'yi telefonun tarayıcısına yaz. (Detay: NASIL_CALISTIRILIR.md)
+Çalıştırma:
+  - Bulut (telefon dahil): yatirim-borsa.streamlit.app
+  - Yerel (Binance bakiyesi dahil):  bash yerel_calistir.sh
 
 UYARI: Bu araç yalnız ÖNERİ ve UYARI verir. Otomatik işlem AÇMAZ.
-Kararı ve işlemi sen verirsin.
+Kararı ve "al/sat" tuşunu hep sen verirsin.
 """
 
 import os
@@ -16,12 +14,12 @@ from decimal import Decimal
 
 import streamlit as st
 
-# Proje kökünü (bu dosyanın bir üst klasörü) Python'un arama yoluna ekle.
-# Böylece 'streamlit run arayuz/app.py' her ortamda (yerel + Streamlit Cloud)
-# 'yatirim' paketini bulabilir.
+# Proje kökünü arama yoluna ekle (yerel + Cloud uyumu).
 _KOK = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _KOK not in sys.path:
     sys.path.insert(0, _KOK)
+
+import pandas as pd
 
 from yatirim.veri.canli import fiyat_gecmisi, temel_veri, bist_sembol
 from yatirim.teknik.hareketli_ortalama import basit_hareketli_ortalama
@@ -38,329 +36,351 @@ from yatirim.tarama.panel import tarama_yap
 from yatirim.kagit.cuzdan import KagitCuzdan
 from yatirim.borsa.binance_oku import bakiye_getir, binance_islem_linki
 from yatirim.emir.ozet import emir_ozeti
+from yatirim.evren.listeler import KRIPTO, ABD, BIST100
 
 
-st.set_page_config(page_title="YATIRIM", page_icon="📊", layout="centered")
+st.set_page_config(page_title="YATIRIM", page_icon="📊", layout="wide")
 
 
+# =========================================================================
+# Yardımcılar
+# =========================================================================
 def guvenli(fonk, *args, **kw):
-    """Bir hesabı çalıştırır; veri yetersizse None döndürür (çökmesin)."""
     try:
         return fonk(*args, **kw)
     except Exception:
         return None
 
 
-def sembol_duzelt(piyasa: str, kod: str) -> str:
-    """Seçilen piyasaya göre sembolü yfinance biçimine getirir."""
-    kod = kod.strip()
-    if piyasa == "BIST (Türk hisseleri)":
-        return bist_sembol(kod)
-    return kod.upper()
-
-
-# --- BAŞLIK ---------------------------------------------------------------
-st.title("📊 YATIRIM")
-st.caption("Kişisel yatırım karar-destek aracı — sadece öneri ve uyarı verir, "
-           "asla otomatik işlem açmaz.")
-
-# --- ÖNERİ PANOSU --------------------------------------------------------
-st.markdown("## 📋 Öneri Panosu")
-st.caption("İzleme listeni tara; göstergelere göre en güçlü görünenler üste sıralanır. "
-           "Bu bir öneri/özettir, yatırım tavsiyesi değildir.")
-_VARSAYILAN_LISTE = "AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA"
-liste_metni = st.text_area(
-    "İzleme listesi (virgül veya satırla ayır; BIST için .IS ekle, örn. THYAO.IS)",
-    value=_VARSAYILAN_LISTE, height=80,
-)
-if st.button("🔎 Önerileri Tara"):
-    semboller = [s.strip() for s in liste_metni.replace("\n", ",").split(",") if s.strip()]
-    if not semboller:
-        st.warning("Önce izleme listesine sembol ekle.")
-    else:
-        with st.spinner(f"{len(semboller)} sembol taranıyor... (biraz sürebilir)"):
-            sonuclar = guvenli(tarama_yap, semboller) or []
-        if not sonuclar:
-            st.error("Tarama sonuç vermedi. İnternet veya sembolleri kontrol et.")
-        else:
-            _renk = {"Olumlu": "🟢", "Zayıf": "🔴", "Nötr": "🟡"}
-            satirlar = []
-            for s in sonuclar:
-                if s.hata:
-                    satirlar.append({"Sembol": s.sembol, "Görünüm": "⚠️ " + s.hata,
-                                     "Skor": "", "Fiyat": "", "Al bölgesi": "",
-                                     "Kâr-al": "", "Stop": "", "Sağlık": ""})
-                    continue
-                satirlar.append({
-                    "Sembol": s.sembol,
-                    "Görünüm": f"{_renk.get(s.yon, '')} {s.yon}",
-                    "Skor": s.skor,
-                    "Fiyat": f"{s.fiyat:.2f}" if s.fiyat is not None else "",
-                    "Al bölgesi": f"{s.al_alt:.2f}–{s.al_ust:.2f}" if s.al_alt is not None else "",
-                    "Kâr-al": f"{s.kar_al:.2f}" if s.kar_al is not None else "",
-                    "Stop": f"{s.stop:.2f}" if s.stop is not None else "",
-                    "Sağlık": s.saglik_skoru if s.saglik_skoru is not None else "",
-                })
-            st.dataframe(satirlar, use_container_width=True)
-            en_iyi = sonuclar[0]
-            if en_iyi.hata is None and en_iyi.yon == "Olumlu":
-                st.success(f"En güçlü görünen: {en_iyi.sembol} (skor {en_iyi.skor:+d}). "
-                           f"Detay için aşağıdan bu sembolü analiz et.")
-
-with st.expander("ℹ️ Skor nasıl hesaplanıyor?"):
-    st.markdown(
-        "Her hisseye **5 sinyale** bakılır; her biri **+1 / 0 / −1** puan:\n\n"
-        "1. **Trend** — Fiyat 20 günlük ortalamanın üstünde +1, altında −1.\n"
-        "2. **RSI** — 30 altı (aşırı satım) +1, 70 üstü (aşırı alım) −1.\n"
-        "3. **MACD** — Momentum yukarı +1, aşağı −1.\n"
-        "4. **Stokastik** — 20 altı +1, 80 üstü −1.\n"
-        "5. **Şirket sağlığı** — Temel skor ≥70 +1, <40 −1.\n\n"
-        "Toplam **−5 ile +5** arası. **≥+2 → 🟢 Olumlu**, **≤−2 → 🔴 Zayıf**, "
-        "arası **🟡 Nötr**. Tablo bu skora göre sıralanır.\n\n"
-        "_Bu bir öneri/özettir, yatırım tavsiyesi değildir; yanılabilir._"
-    )
-
-st.markdown("---")
-st.markdown("## 🔍 Tek Hisse Analizi")
-
-# --- GİRDİLER -------------------------------------------------------------
-piyasa = st.selectbox(
-    "Piyasa",
-    ["ABD hisseleri", "BIST (Türk hisseleri)", "Kripto", "Değerli metal"],
-)
-ipucu = {
-    "ABD hisseleri": "Örn: AAPL, MSFT",
-    "BIST (Türk hisseleri)": "Örn: THYAO, ASELS",
-    "Kripto": "Örn: BTC-USD, ETH-USD",
-    "Değerli metal": "Örn: GC=F (altın), SI=F (gümüş)",
-}[piyasa]
-kod = st.text_input("Sembol", placeholder=ipucu)
-periyot = st.selectbox("Fiyat geçmişi süresi", ["3mo", "6mo", "1y", "2y", "5y"], index=1)
-
-if st.button("Analiz Et", type="primary") and kod:
-    _sembol = sembol_duzelt(piyasa, kod)
-    with st.spinner(f"{_sembol} verisi çekiliyor..."):
-        _fiyatlar = guvenli(fiyat_gecmisi, _sembol, periyot)
-    if not _fiyatlar:
-        st.error(f"'{_sembol}' için fiyat verisi alınamadı. Sembolü kontrol et "
-                 "veya internet bağlantına bak.")
-    else:
-        # Analizi hafızada tut ki butonlara basınca (yeniden çalışınca) kaybolmasın.
-        st.session_state["analiz"] = {"sembol": _sembol, "fiyatlar": _fiyatlar}
-
-_analiz = st.session_state.get("analiz")
-if _analiz:
-    sembol = _analiz["sembol"]
-    fiyatlar = _analiz["fiyatlar"]
-    son_fiyat = fiyatlar[-1]
-    st.subheader(f"{sembol}")
-    st.metric("Son fiyat", f"{son_fiyat:.2f}")
-    st.line_chart([float(f) for f in fiyatlar])
-
-    # --- TEKNİK ANALİZ ---------------------------------------------------
-    st.markdown("### 📈 Teknik Analiz")
-    sma20 = guvenli(basit_hareketli_ortalama, fiyatlar, 20)
-    ema20 = guvenli(ussel_hareketli_ortalama, fiyatlar, 20)
-    rsi14 = guvenli(rsi, fiyatlar, 14)
-    macd_s = guvenli(macd, fiyatlar)
-    boll = guvenli(bollinger_bantlari, fiyatlar, 20)
-    stok = guvenli(stokastik_k, fiyatlar, 14)
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("SMA(20)", f"{sma20[-1]:.2f}" if sma20 else "—")
-    c2.metric("EMA(20)", f"{ema20[-1]:.2f}" if ema20 else "—")
-    c3.metric("RSI(14)", f"{rsi14}" if rsi14 is not None else "—")
-
-    if rsi14 is not None:
-        st.info("RSI: " + rsi_uyarisi(rsi14).mesaj)
-
-    if macd_s and macd_s.histogram:
-        h = macd_s.histogram[-1]
-        yon = "yukarı (pozitif)" if h > 0 else "aşağı (negatif)"
-        st.write(f"**MACD histogram:** {h:.4f} → momentum {yon}")
-
-    if boll and boll.ust:
-        st.write(f"**Bollinger:** alt {boll.alt[-1]:.2f} | "
-                 f"orta {boll.orta[-1]:.2f} | üst {boll.ust[-1]:.2f}")
-        if son_fiyat >= boll.ust[-1]:
-            st.write("→ Fiyat üst banda yakın (görece pahalı/aşırı olabilir).")
-        elif son_fiyat <= boll.alt[-1]:
-            st.write("→ Fiyat alt banda yakın (görece ucuz/aşırı olabilir).")
-
-    if stok:
-        st.write(f"**Stokastik %K:** {stok[-1]}")
-
-    # --- TEMEL ANALİZ ----------------------------------------------------
-    st.markdown("### 🏢 Temel Analiz — Şirket Sağlığı")
-    saglik_skoru = None
-    tveri = guvenli(temel_veri, sembol)
-    if tveri is None:
-        st.warning("Temel veri alınamadı (bu sembol için olmayabilir, örn. kripto/metal).")
-    else:
-        saglik = sirket_sagligi(tveri)
-        if saglik.durum == "Veri yetersiz":
-            st.warning("Bu sembol için yeterli temel veri yok.")
-        else:
-            saglik_skoru = saglik.skor
-            st.metric("Sağlık skoru", f"{saglik.skor}/100", saglik.durum)
-            if saglik.guclu:
-                st.success("Güçlü yönler:\n- " + "\n- ".join(saglik.guclu))
-            if saglik.zayif:
-                st.error("Zayıf yönler:\n- " + "\n- ".join(saglik.zayif))
-
-    # --- AKILLI YORUM ----------------------------------------------------
-    st.markdown("### 🤖 Akıllı Yorum")
-    yorum = guvenli(hisse_yorumu, fiyatlar, saglik_skoru)
-    if yorum is None:
-        st.warning("Yorum üretmek için yeterli veri yok.")
-    else:
-        renk = {"Olumlu": "🟢", "Zayıf": "🔴", "Nötr": "🟡"}.get(yorum.yon, "")
-        st.metric("Genel görünüm", f"{renk} {yorum.yon}", f"sinyal skoru {yorum.skor:+d}")
-        a1, a2, a3 = st.columns(3)
-        a1.metric("Al bölgesi", f"{yorum.al_bolgesi[0]:.2f}–{yorum.al_bolgesi[1]:.2f}")
-        a2.metric("Kâr-al hedefi", f"{yorum.kar_al_hedefi:.2f}")
-        a3.metric("Stop seviyesi", f"{yorum.stop_seviyesi:.2f}")
-        if yorum.gerekceler:
-            st.write("**Gerekçeler:**")
-            for g in yorum.gerekceler:
-                st.write("- " + g)
-        st.warning(yorum.uyari)
-
-        # --- EMİR ÖZETİ (hazır emir; program emir VERMEZ) ----------------
-        st.markdown("#### 📝 Emir Özeti — hazır; emri SEN verirsin")
-        emir_sermaye = st.number_input(
-            "Toplam sermayen", min_value=0.0, value=100000.0, step=1000.0, key="emir_sermaye")
-        ozet = guvenli(emir_ozeti, yorum.yon, Decimal(str(emir_sermaye)),
-                       son_fiyat, yorum.stop_seviyesi, yorum.kar_al_hedefi)
-        if ozet is None:
-            st.caption("Emir özeti üretilemedi (giriş/stop uygun değil).")
-        else:
-            st.write(f"**Öneri:** {ozet.taraf}")
-            e1, e2, e3 = st.columns(3)
-            e1.metric("Giriş ≈", f"{ozet.giris:.2f}")
-            e2.metric("Stop", f"{ozet.stop:.2f}")
-            e3.metric("Kâr-al", f"{ozet.kar_al:.2f}")
-            st.write(f"**Önerilen adet:** {ozet.onerilen_adet}  —  "
-                     f"riske atılan ≈ {ozet.riske_atilan} (ana paranın %{ozet.risk_yuzde}'i)")
-            _link = binance_islem_linki(sembol)
-            if _link:
-                st.link_button("🔗 Binance'te işlem sayfasını aç", _link)
-            else:
-                st.caption("Bu sembol Binance'te olmayabilir (örn. hisse); emri kendi aracı kurumunda gir.")
-            st.info(ozet.not_)
-
-    # --- RİSK KAPISI -----------------------------------------------------
-    st.markdown("### 🛡️ Risk Kontrolü (işlem teklifini denetle)")
-    with st.form("risk"):
-        sermaye = st.number_input("Toplam sermaye", min_value=0.0, value=100000.0, step=1000.0)
-        giris = st.number_input("Giriş fiyatı", min_value=0.0, value=float(son_fiyat), step=0.1)
-        stop = st.number_input("Stop-loss (zarar-kes)", min_value=0.0, value=float(son_fiyat) * 0.95, step=0.1)
-        adet = st.number_input("Adet", min_value=0.0, value=100.0, step=1.0)
-        teminat = st.number_input("Bu işleme koyduğun para (teminat)", min_value=0.0, value=10000.0, step=500.0)
-        kaldirac = st.number_input("Kaldıraç (1 = yok)", min_value=1.0, value=1.0, step=1.0)
-        gonder = st.form_submit_button("Denetle")
-
-    if gonder:
-        teklif = IslemTeklifi(
-            toplam_sermaye=Decimal(str(sermaye)),
-            giris_fiyati=Decimal(str(giris)),
-            stop_fiyati=Decimal(str(stop)),
-            adet=Decimal(str(adet)),
-            yon="uzun",
-            teminat=Decimal(str(teminat)),
-            kaldirac_orani=Decimal(str(kaldirac)),
-            mevcut_riskler=[],
-        )
-        karar = islem_degerlendir(teklif)
-        if karar.uygun:
-            st.success(f"UYGUN ✅  | Bu işlemde riske atılan: {karar.riske_atilan:.2f}")
-        else:
-            st.error("UYGUN DEĞİL ❌")
-            for i in karar.ihlaller:
-                st.write("- " + i)
-
-    # --- KAĞIT CÜZDAN (sahte parayla dene) -------------------------------
-    st.markdown("### 📒 Kağıt Cüzdan — sahte parayla dene (gerçek para YOK)")
-    if "cuzdan" not in st.session_state:
-        st.session_state["cuzdan"] = KagitCuzdan(Decimal("100000"))
-    cuzdan = st.session_state["cuzdan"]
-
-    kc_adet = st.number_input("Adet (kağıt işlem)", min_value=0.0, value=10.0, step=1.0)
-    al_kol, sat_kol = st.columns(2)
-    if al_kol.button(f"📈 Kağıt AL — {sembol} @ {son_fiyat:.2f}"):
-        try:
-            cuzdan.al(sembol, son_fiyat, Decimal(str(kc_adet)))
-            st.success(f"{kc_adet:g} adet {sembol} alındı (sahte).")
-        except ValueError as e:
-            st.error(str(e))
-    if sat_kol.button(f"📉 Kağıt SAT — {sembol} @ {son_fiyat:.2f}"):
-        try:
-            cuzdan.sat(sembol, son_fiyat, Decimal(str(kc_adet)))
-            st.success(f"{kc_adet:g} adet {sembol} satıldı (sahte).")
-        except ValueError as e:
-            st.error(str(e))
-
-    st.write(f"**Nakit:** {cuzdan.nakit:.2f}")
-    if cuzdan.pozisyonlar:
-        st.write("**Pozisyonların:**")
-        for s, a in cuzdan.pozisyonlar.items():
-            ek = f" → bu fiyatla ≈ {(a * son_fiyat):.2f}" if s == sembol else ""
-            st.write(f"- {s}: {a:g} adet{ek}")
-    else:
-        st.write("_Henüz pozisyon yok._")
-    if st.button("🔄 Kağıt cüzdanı sıfırla (100.000)"):
-        st.session_state["cuzdan"] = KagitCuzdan(Decimal("100000"))
-        st.success("Cüzdan sıfırlandı.")
-
 def _gizli(anahtar: str) -> str:
-    """Streamlit secrets'tan değer okur; yoksa boş döner (çökmeden)."""
     try:
         return st.secrets.get(anahtar, "")
     except Exception:
         return ""
 
 
-# --- BINANCE PORTFÖYÜ (SALT-OKUNUR) --------------------------------------
-st.markdown("---")
-st.markdown("## 🔐 Binance Portföyü (salt-okunur)")
-st.caption("Program bakiyeni yalnızca GÖRÜNTÜLER; senin adına ASLA emir vermez, "
-           "para çekmez. API anahtarın da yalnız 'okuma' izinli olmalı.")
+@st.cache_data(ttl=300, show_spinner=False)
+def pazar_tara(semboller_tuple, temel_dahil=False, periyot="3mo"):
+    """Sembolleri tarayıp tablo için sözlük listesi döndürür (5 dk önbellekli)."""
+    sonuc = tarama_yap(list(semboller_tuple), temel_dahil=temel_dahil, periyot=periyot)
+    satirlar = []
+    for s in sonuc:
+        satirlar.append({
+            "Sembol": s.sembol,
+            "Fiyat": float(s.fiyat) if s.fiyat is not None else None,
+            "Günlük %": float(s.gunluk_degisim) if s.gunluk_degisim is not None else None,
+            "Görünüm": s.yon,
+            "Skor": s.skor,
+            "Al ↓": float(s.al_alt) if s.al_alt is not None else None,
+            "Stop": float(s.stop) if s.stop is not None else None,
+            "Kâr-al ↑": float(s.kar_al) if s.kar_al is not None else None,
+            "_hata": s.hata,
+        })
+    return satirlar
 
-_bn_key = _gizli("BINANCE_API_KEY")
-_bn_secret = _gizli("BINANCE_SECRET")
 
-if not _bn_key or not _bn_secret:
-    st.info(
-        "Henüz bağlı değil. Bağlamak için:\n\n"
-        "1. Binance → API Management → **Create API** → izinlerden SADECE "
-        "**Enable Reading** açık olsun (Trading & Withdrawals KAPALI).\n"
-        "2. Streamlit uygulaman → **Manage app → Settings → Secrets**'a şunları ekle:\n"
-        "```\nBINANCE_API_KEY = \"...\"\nBINANCE_SECRET = \"...\"\n```\n"
-        "3. Kaydet; uygulama yenilenince burada **Bakiyemi Getir** butonu çıkar."
-    )
-else:
-    if st.button("💼 Bakiyemi Getir"):
-        bakiyeler = None
-        try:
-            with st.spinner("Binance'ten bakiye okunuyor..."):
-                bakiyeler = bakiye_getir(_bn_key, _bn_secret)
-        except Exception as e:
-            st.error(f"Bakiye alınamadı: {e}")
-            if "restricted" in str(e).lower() or "451" in str(e):
-                st.warning("Bu hata coğrafi engel demek: Streamlit'in sunucusu Binance'e "
-                           "kapalı bir bölgede. Çözüm: uygulamayı kendi bilgisayarında "
-                           "çalıştır (yerel IP'n ile). Birlikte kurarız.")
-        if bakiyeler is None:
-            pass  # hata yukarıda gösterildi
-        elif not bakiyeler:
-            st.info("Hesapta sıfırdan büyük bakiye görünmüyor.")
+def _stil(df):
+    """Tabloyu renklendir: günlük % yeşil/kırmızı, görünüm renk kodlu."""
+    def renk_deg(v):
+        if isinstance(v, (int, float)):
+            if v > 0:
+                return "color: #16a34a; font-weight: 600;"
+            if v < 0:
+                return "color: #dc2626; font-weight: 600;"
+        return ""
+
+    def renk_yon(v):
+        return {
+            "Olumlu": "background-color: #dcfce7;",
+            "Zayıf": "background-color: #fee2e2;",
+            "Nötr": "background-color: #fef9c3;",
+        }.get(v, "")
+
+    return (df.style
+            .applymap(renk_deg, subset=["Günlük %"])
+            .applymap(renk_yon, subset=["Görünüm"])
+            .format({"Fiyat": "{:.2f}", "Günlük %": "{:+.2f}",
+                     "Al ↓": "{:.2f}", "Stop": "{:.2f}", "Kâr-al ↑": "{:.2f}"},
+                    na_rep="—"))
+
+
+def pazar_paneli(baslik, semboller, anahtar, temel_dahil=False):
+    """Bir piyasa panelini çizer: Tara butonu + renkli fiyat/sinyal tablosu."""
+    st.markdown(f"#### {baslik}  ·  {len(semboller)} sembol")
+    ust = st.columns([1, 2, 2])
+    if ust[0].button("🔄 Tara / Yenile", key=f"btn_{anahtar}", type="primary"):
+        with st.spinner(f"{len(semboller)} sembol taranıyor... (biraz sürebilir)"):
+            st.session_state[f"sonuc_{anahtar}"] = guvenli(
+                pazar_tara, tuple(semboller), temel_dahil, "3mo") or []
+
+    sonuc = st.session_state.get(f"sonuc_{anahtar}")
+    if sonuc is None:
+        st.info("Fiyatları ve önerileri görmek için **Tara / Yenile**'ye bas.")
+        return
+    if not sonuc:
+        st.error("Tarama sonuç vermedi. İnternet veya sembolleri kontrol et.")
+        return
+
+    df = pd.DataFrame(sonuc)
+    df_ok = df[df["_hata"].isna()].drop(columns=["_hata"])
+    df_err = df[df["_hata"].notna()]
+
+    # Özet metrikler
+    olumlu = int((df_ok["Görünüm"] == "Olumlu").sum())
+    zayif = int((df_ok["Görünüm"] == "Zayıf").sum())
+    m = st.columns(3)
+    m[0].metric("🟢 Olumlu", olumlu)
+    m[1].metric("🔴 Zayıf", zayif)
+    m[2].metric("Veri gelen / toplam", f"{len(df_ok)} / {len(df)}")
+
+    if not df_ok.empty:
+        st.dataframe(_stil(df_ok), use_container_width=True, hide_index=True)
+    if not df_err.empty:
+        with st.expander(f"Veri gelmeyen {len(df_err)} sembol"):
+            st.write(", ".join(df_err["Sembol"].tolist()))
+    st.caption("Skor 5 sinyalden gelir (trend, RSI, MACD, Stokastik, sağlık). "
+               "Öneri/özettir, yatırım tavsiyesi değildir.")
+
+
+# =========================================================================
+# Başlık
+# =========================================================================
+st.title("📊 YATIRIM")
+st.caption("Kişisel yatırım karar-destek paneli — öneri ve uyarı verir, asla otomatik işlem açmaz.")
+
+sekme_oneri, sekme_kripto, sekme_bist, sekme_abd, sekme_analiz, sekme_binance = st.tabs(
+    ["📋 Öneriler", "🪙 Kripto", "🇹🇷 BIST", "🇺🇸 ABD", "🔍 Tek Analiz", "🔐 Binance"]
+)
+
+
+# =========================================================================
+# SEKME: ÖNERİLER (kripto + ABD birleşik en güçlüler)
+# =========================================================================
+with sekme_oneri:
+    st.markdown("### 📋 Öneri Panosu")
+    st.caption("Kripto + ABD taranır, sinyale göre en güçlü görünenler üste gelir.")
+    if st.button("🔎 Önerileri Tara", key="btn_oneri", type="primary"):
+        evren = tuple(KRIPTO + ABD)
+        with st.spinner(f"{len(evren)} sembol taranıyor... (biraz sürebilir)"):
+            st.session_state["sonuc_oneri"] = guvenli(pazar_tara, evren, False, "3mo") or []
+
+    sonuc = st.session_state.get("sonuc_oneri")
+    if sonuc is None:
+        st.info("Sana önerilen coin ve hisseleri görmek için **Önerileri Tara**'ya bas.")
+    elif not sonuc:
+        st.error("Tarama sonuç vermedi.")
+    else:
+        df = pd.DataFrame(sonuc)
+        df_ok = df[df["_hata"].isna()].drop(columns=["_hata"])
+        st.markdown("#### 🟢 En güçlü görünen ilk 15")
+        st.dataframe(_stil(df_ok.head(15)), use_container_width=True, hide_index=True)
+        st.caption("Detaylı bakmak için sembolü '🔍 Tek Analiz' sekmesine yaz.")
+
+
+# =========================================================================
+# SEKME: KRİPTO / BIST / ABD panelleri
+# =========================================================================
+with sekme_kripto:
+    pazar_paneli("🪙 Kripto", KRIPTO, "kripto", temel_dahil=False)
+
+with sekme_bist:
+    st.warning("BIST100 taraması yavaştır ve ücretsiz veride bazı hisseler 'veri yok' "
+               "dönebilir. Sabırla bekle.")
+    pazar_paneli("🇹🇷 BIST100", BIST100, "bist", temel_dahil=False)
+
+with sekme_abd:
+    pazar_paneli("🇺🇸 ABD", ABD, "abd", temel_dahil=True)
+
+
+# =========================================================================
+# SEKME: TEK HİSSE ANALİZİ (detaylı)
+# =========================================================================
+with sekme_analiz:
+    st.markdown("### 🔍 Tek Hisse / Coin Analizi")
+    g = st.columns([2, 3, 2])
+    piyasa = g[0].selectbox("Piyasa", ["ABD hisseleri", "BIST (Türk hisseleri)", "Kripto", "Değerli metal"])
+    ipucu = {
+        "ABD hisseleri": "Örn: AAPL",
+        "BIST (Türk hisseleri)": "Örn: THYAO",
+        "Kripto": "Örn: BTC-USD",
+        "Değerli metal": "Örn: GC=F",
+    }[piyasa]
+    kod = g[1].text_input("Sembol", placeholder=ipucu)
+    periyot = g[2].selectbox("Süre", ["3mo", "6mo", "1y", "2y", "5y"], index=1)
+
+    def sembol_duzelt(piyasa, kod):
+        kod = kod.strip()
+        if piyasa == "BIST (Türk hisseleri)":
+            return bist_sembol(kod)
+        return kod.upper()
+
+    if st.button("Analiz Et", type="primary", key="analiz_btn") and kod:
+        _sembol = sembol_duzelt(piyasa, kod)
+        with st.spinner(f"{_sembol} verisi çekiliyor..."):
+            _fiyatlar = guvenli(fiyat_gecmisi, _sembol, periyot)
+        if not _fiyatlar:
+            st.error(f"'{_sembol}' için fiyat verisi alınamadı.")
         else:
-            satirlar = [
-                {"Varlık": a, "Serbest": f"{s:f}", "Kilitli": f"{k:f}"}
-                for a, s, k in bakiyeler
-            ]
-            st.dataframe(satirlar, use_container_width=True)
-            st.caption("Yalnızca görüntüleme. Emir vermek istersen kendi elinle Binance'te yaparsın.")
+            st.session_state["analiz"] = {"sembol": _sembol, "fiyatlar": _fiyatlar}
+
+    _analiz = st.session_state.get("analiz")
+    if _analiz:
+        sembol = _analiz["sembol"]
+        fiyatlar = _analiz["fiyatlar"]
+        son_fiyat = fiyatlar[-1]
+        st.subheader(sembol)
+        st.metric("Son fiyat", f"{son_fiyat:.2f}")
+        st.line_chart([float(f) for f in fiyatlar])
+
+        # Teknik
+        st.markdown("#### 📈 Teknik Analiz")
+        sma20 = guvenli(basit_hareketli_ortalama, fiyatlar, 20)
+        ema20 = guvenli(ussel_hareketli_ortalama, fiyatlar, 20)
+        rsi14 = guvenli(rsi, fiyatlar, 14)
+        macd_s = guvenli(macd, fiyatlar)
+        boll = guvenli(bollinger_bantlari, fiyatlar, 20)
+        stok = guvenli(stokastik_k, fiyatlar, 14)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("SMA(20)", f"{sma20[-1]:.2f}" if sma20 else "—")
+        c2.metric("EMA(20)", f"{ema20[-1]:.2f}" if ema20 else "—")
+        c3.metric("RSI(14)", f"{rsi14}" if rsi14 is not None else "—")
+        if rsi14 is not None:
+            st.info("RSI: " + rsi_uyarisi(rsi14).mesaj)
+        if macd_s and macd_s.histogram:
+            h = macd_s.histogram[-1]
+            st.write(f"**MACD histogram:** {h:.4f} → momentum "
+                     f"{'yukarı' if h > 0 else 'aşağı'}")
+        if boll and boll.ust:
+            st.write(f"**Bollinger:** alt {boll.alt[-1]:.2f} | orta {boll.orta[-1]:.2f} "
+                     f"| üst {boll.ust[-1]:.2f}")
+        if stok:
+            st.write(f"**Stokastik %K:** {stok[-1]}")
+
+        # Temel
+        st.markdown("#### 🏢 Şirket Sağlığı")
+        saglik_skoru = None
+        tveri = guvenli(temel_veri, sembol)
+        if tveri is None:
+            st.warning("Temel veri yok (kripto/metal olabilir).")
+        else:
+            saglik = sirket_sagligi(tveri)
+            if saglik.durum == "Veri yetersiz":
+                st.warning("Bu sembol için yeterli temel veri yok.")
+            else:
+                saglik_skoru = saglik.skor
+                st.metric("Sağlık skoru", f"{saglik.skor}/100", saglik.durum)
+                if saglik.guclu:
+                    st.success("Güçlü: " + ", ".join(saglik.guclu))
+                if saglik.zayif:
+                    st.error("Zayıf: " + ", ".join(saglik.zayif))
+
+        # Akıllı yorum + emir özeti
+        st.markdown("#### 🤖 Akıllı Yorum")
+        yorum = guvenli(hisse_yorumu, fiyatlar, saglik_skoru)
+        if yorum is None:
+            st.warning("Yorum için yeterli veri yok.")
+        else:
+            renk = {"Olumlu": "🟢", "Zayıf": "🔴", "Nötr": "🟡"}.get(yorum.yon, "")
+            st.metric("Genel görünüm", f"{renk} {yorum.yon}", f"sinyal skoru {yorum.skor:+d}")
+            a1, a2, a3 = st.columns(3)
+            a1.metric("Al bölgesi", f"{yorum.al_bolgesi[0]:.2f}–{yorum.al_bolgesi[1]:.2f}")
+            a2.metric("Kâr-al hedefi", f"{yorum.kar_al_hedefi:.2f}")
+            a3.metric("Stop", f"{yorum.stop_seviyesi:.2f}")
+            for gx in yorum.gerekceler:
+                st.write("- " + gx)
+            st.warning(yorum.uyari)
+
+            st.markdown("#### 📝 Emir Özeti — hazır; emri SEN verirsin")
+            sermaye = st.number_input("Toplam sermayen", min_value=0.0, value=100000.0,
+                                      step=1000.0, key="emir_sermaye")
+            ozet = guvenli(emir_ozeti, yorum.yon, Decimal(str(sermaye)), son_fiyat,
+                           yorum.stop_seviyesi, yorum.kar_al_hedefi)
+            if ozet is not None:
+                st.write(f"**Öneri:** {ozet.taraf}  ·  **Önerilen adet:** {ozet.onerilen_adet}  "
+                         f"(riske atılan ≈ {ozet.riske_atilan}, ana paranın %{ozet.risk_yuzde}'i)")
+                _link = binance_islem_linki(sembol)
+                if _link:
+                    st.link_button("🔗 Binance'te işlem sayfasını aç", _link)
+                st.info(ozet.not_)
+
+        # Risk kapısı
+        st.markdown("#### 🛡️ Risk Kontrolü")
+        with st.form("risk"):
+            r = st.columns(3)
+            sermaye2 = r[0].number_input("Sermaye", min_value=0.0, value=100000.0, step=1000.0)
+            giris = r[1].number_input("Giriş", min_value=0.0, value=float(son_fiyat), step=0.1)
+            stop = r[2].number_input("Stop", min_value=0.0, value=float(son_fiyat) * 0.95, step=0.1)
+            r2 = st.columns(3)
+            adet = r2[0].number_input("Adet", min_value=0.0, value=100.0, step=1.0)
+            teminat = r2[1].number_input("Teminat", min_value=0.0, value=10000.0, step=500.0)
+            kaldirac = r2[2].number_input("Kaldıraç (1=yok)", min_value=1.0, value=1.0, step=1.0)
+            gonder = st.form_submit_button("Denetle")
+        if gonder:
+            karar = islem_degerlendir(IslemTeklifi(
+                toplam_sermaye=Decimal(str(sermaye2)), giris_fiyati=Decimal(str(giris)),
+                stop_fiyati=Decimal(str(stop)), adet=Decimal(str(adet)), yon="uzun",
+                teminat=Decimal(str(teminat)), kaldirac_orani=Decimal(str(kaldirac)),
+                mevcut_riskler=[]))
+            if karar.uygun:
+                st.success(f"UYGUN ✅ | riske atılan: {karar.riske_atilan:.2f}")
+            else:
+                st.error("UYGUN DEĞİL ❌")
+                for i in karar.ihlaller:
+                    st.write("- " + i)
+
+        # Kağıt cüzdan
+        st.markdown("#### 📒 Kağıt Cüzdan — sahte parayla dene")
+        if "cuzdan" not in st.session_state:
+            st.session_state["cuzdan"] = KagitCuzdan(Decimal("100000"))
+        cuzdan = st.session_state["cuzdan"]
+        kc_adet = st.number_input("Adet (kağıt)", min_value=0.0, value=10.0, step=1.0)
+        kcol = st.columns(2)
+        if kcol[0].button(f"📈 Kağıt AL @ {son_fiyat:.2f}"):
+            try:
+                cuzdan.al(sembol, son_fiyat, Decimal(str(kc_adet)))
+                st.success("Alındı (sahte).")
+            except ValueError as e:
+                st.error(str(e))
+        if kcol[1].button(f"📉 Kağıt SAT @ {son_fiyat:.2f}"):
+            try:
+                cuzdan.sat(sembol, son_fiyat, Decimal(str(kc_adet)))
+                st.success("Satıldı (sahte).")
+            except ValueError as e:
+                st.error(str(e))
+        st.write(f"**Nakit:** {cuzdan.nakit:.2f}")
+        if cuzdan.pozisyonlar:
+            st.write("**Pozisyonlar:** " + ", ".join(
+                f"{s}: {a:g}" for s, a in cuzdan.pozisyonlar.items()))
+
+
+# =========================================================================
+# SEKME: BINANCE (salt-okunur)
+# =========================================================================
+with sekme_binance:
+    st.markdown("### 🔐 Binance Portföyü (salt-okunur)")
+    st.caption("Program bakiyeni yalnızca GÖRÜNTÜLER; senin adına ASLA emir vermez, para çekmez.")
+    _bn_key = _gizli("BINANCE_API_KEY")
+    _bn_secret = _gizli("BINANCE_SECRET")
+    if not _bn_key or not _bn_secret:
+        st.info("Henüz bağlı değil. Binance'te SADECE 'Enable Reading' izinli bir API anahtarı "
+                "oluştur, sonra anahtarları Streamlit Secrets'a (yerelde .streamlit/secrets.toml) ekle.")
+    else:
+        if st.button("💼 Bakiyemi Getir", type="primary"):
+            try:
+                with st.spinner("Binance'ten okunuyor..."):
+                    bakiyeler = bakiye_getir(_bn_key, _bn_secret)
+                if not bakiyeler:
+                    st.info("Sıfırdan büyük bakiye görünmüyor.")
+                else:
+                    st.dataframe(
+                        [{"Varlık": a, "Serbest": f"{s:f}", "Kilitli": f"{k:f}"}
+                         for a, s, k in bakiyeler],
+                        use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.error(f"Bakiye alınamadı: {e}")
+                if "restricted" in str(e).lower() or "451" in str(e):
+                    st.warning("Coğrafi engel: Streamlit Cloud (ABD) Binance'e kapalı. "
+                               "Uygulamayı kendi bilgisayarında çalıştır (bash yerel_calistir.sh).")
 
 st.markdown("---")
-st.caption("Geçmiş performans geleceğin garantisi değildir. Kararı sen verirsin.")
+st.caption("Geçmiş performans geleceğin garantisi değildir. Otomatik işlem yok; kararı sen verirsin.")

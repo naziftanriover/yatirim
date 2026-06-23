@@ -5,7 +5,23 @@ Ağ (tarama_yap) burada test edilmez; saf sıralama (sirala) test edilir.
 
 import unittest
 
-from yatirim.tarama.panel import sirala, TaramaSatiri
+from decimal import Decimal
+
+from yatirim.tarama.panel import sirala, TaramaSatiri, gunluk_degisim_yuzde
+
+
+class GunlukDegisimTest(unittest.TestCase):
+
+    def test_yukselis(self):
+        self.assertEqual(
+            gunluk_degisim_yuzde([Decimal("100"), Decimal("110")]), Decimal("10.00"))
+
+    def test_dusus(self):
+        self.assertEqual(
+            gunluk_degisim_yuzde([Decimal("100"), Decimal("90")]), Decimal("-10.00"))
+
+    def test_yetersiz_veri_none(self):
+        self.assertIsNone(gunluk_degisim_yuzde([Decimal("100")]))
 
 
 class SiralaTest(unittest.TestCase):
