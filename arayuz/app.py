@@ -34,6 +34,7 @@ from yatirim.temel.saglik import sirket_sagligi
 from yatirim.uyari.kosul import rsi_uyarisi
 from yatirim.risk.kapi import islem_degerlendir, IslemTeklifi
 from yatirim.yorum.motor import hisse_yorumu
+from yatirim.tarama.panel import tarama_yap
 
 
 st.set_page_config(page_title="YATIRIM", page_icon="📊", layout="centered")
@@ -59,6 +60,52 @@ def sembol_duzelt(piyasa: str, kod: str) -> str:
 st.title("📊 YATIRIM")
 st.caption("Kişisel yatırım karar-destek aracı — sadece öneri ve uyarı verir, "
            "asla otomatik işlem açmaz.")
+
+# --- ÖNERİ PANOSU --------------------------------------------------------
+st.markdown("## 📋 Öneri Panosu")
+st.caption("İzleme listeni tara; göstergelere göre en güçlü görünenler üste sıralanır. "
+           "Bu bir öneri/özettir, yatırım tavsiyesi değildir.")
+_VARSAYILAN_LISTE = "AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA"
+liste_metni = st.text_area(
+    "İzleme listesi (virgül veya satırla ayır; BIST için .IS ekle, örn. THYAO.IS)",
+    value=_VARSAYILAN_LISTE, height=80,
+)
+if st.button("🔎 Önerileri Tara"):
+    semboller = [s.strip() for s in liste_metni.replace("\n", ",").split(",") if s.strip()]
+    if not semboller:
+        st.warning("Önce izleme listesine sembol ekle.")
+    else:
+        with st.spinner(f"{len(semboller)} sembol taranıyor... (biraz sürebilir)"):
+            sonuclar = guvenli(tarama_yap, semboller) or []
+        if not sonuclar:
+            st.error("Tarama sonuç vermedi. İnternet veya sembolleri kontrol et.")
+        else:
+            _renk = {"Olumlu": "🟢", "Zayıf": "🔴", "Nötr": "🟡"}
+            satirlar = []
+            for s in sonuclar:
+                if s.hata:
+                    satirlar.append({"Sembol": s.sembol, "Görünüm": "⚠️ " + s.hata,
+                                     "Skor": "", "Fiyat": "", "Al bölgesi": "",
+                                     "Kâr-al": "", "Stop": "", "Sağlık": ""})
+                    continue
+                satirlar.append({
+                    "Sembol": s.sembol,
+                    "Görünüm": f"{_renk.get(s.yon, '')} {s.yon}",
+                    "Skor": s.skor,
+                    "Fiyat": f"{s.fiyat:.2f}" if s.fiyat is not None else "",
+                    "Al bölgesi": f"{s.al_alt:.2f}–{s.al_ust:.2f}" if s.al_alt is not None else "",
+                    "Kâr-al": f"{s.kar_al:.2f}" if s.kar_al is not None else "",
+                    "Stop": f"{s.stop:.2f}" if s.stop is not None else "",
+                    "Sağlık": s.saglik_skoru if s.saglik_skoru is not None else "",
+                })
+            st.dataframe(satirlar, use_container_width=True)
+            en_iyi = sonuclar[0]
+            if en_iyi.hata is None and en_iyi.yon == "Olumlu":
+                st.success(f"En güçlü görünen: {en_iyi.sembol} (skor {en_iyi.skor:+d}). "
+                           f"Detay için aşağıdan bu sembolü analiz et.")
+
+st.markdown("---")
+st.markdown("## 🔍 Tek Hisse Analizi")
 
 # --- GİRDİLER -------------------------------------------------------------
 piyasa = st.selectbox(

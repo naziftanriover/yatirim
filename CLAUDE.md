@@ -67,7 +67,13 @@ python3 -m unittest discover -s testler -v
 - [x] Toplam açık risk tavanı: açık tüm işlemlerin toplam riski tavanı geçemez. ✅ (yatirim/risk/toplam.py)
 
 ## 6. Kaldığımız Yer (güncel durum)
-- 97 test yeşil. `unittest`. Tüm çekirdek mantık saf + test edilmiş.
+- YAYINDA: https://yatirim-borsa.streamlit.app (GitHub naziftanriover/yatirim private + Streamlit Cloud).
+- Güncelleme: `bash guncelle.sh "mesaj"`. Veri: yfinance + Stooq yedeği (canli.py).
+- AKILLI YORUM: `yatirim/yorum/motor.py` — yön + al bölgesi/kâr-al/stop seviyeleri + gerekçe (tavsiye değil).
+- ÖNERİ PANOSU: `yatirim/tarama/panel.py` — izleme listesini tarayıp skora göre sıralar (app.py'de en üstte).
+- SINIR (kullanıcıya net söylendi): otomatik gerçek al-sat YOK (projenin 1. kuralı + güvenlik).
+  Güvenli alternatifler: akıllı yorum, öneri panosu, (planlı) Binance salt-okunur + kağıt trading.
+- 113 test yeşil. `unittest`. Tüm çekirdek mantık saf + test edilmiş.
 - CANLI VERİ eklendi: `yatirim/veri/canli.py` (yfinance) — fiyat geçmişi + temel veri.
   ABD/BIST/kripto/metal. BIST için `bist_sembol()` (.IS eki).
 - TEKNİK genişledi: SMA, EMA, RSI, MACD, Bollinger, Stokastik.
