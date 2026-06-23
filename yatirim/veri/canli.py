@@ -54,25 +54,104 @@ def bist_sembol(kod: str) -> str:
     return kod if kod.endswith(".IS") else f"{kod}.IS"
 
 
+# periyot -> kaç günlük veri (Stooq yedeği için kabaca kırpma).
+_PERIYOT_GUN = {"1mo": 21, "3mo": 63, "6mo": 126, "1y": 252, "2y": 504, "5y": 1260}
+
+
 def fiyat_gecmisi(sembol: str, periyot: str = "6mo", aralik: str = "1d") -> list:
     """Sembolün kapanış fiyatlarını sırayla Decimal listesi olarak döndürür.
+
+    Önce yfinance (Yahoo) denenir. Bulutta Yahoo engellenirse Stooq'a düşer.
 
     periyot örnekleri: '1mo','3mo','6mo','1y','2y','5y','max'
     aralik örnekleri:  '1d','1wk','1mo'
     """
+    # 1) Birincil kaynak: yfinance (Yahoo)
+    try:
+        fiyatlar = _yfinance_fiyat(sembol, periyot, aralik)
+        if fiyatlar:
+            return fiyatlar
+    except Exception:
+        pass  # yedeğe geç
+
+    # 2) Yedek kaynak: Stooq (özellikle ABD hisseleri; bulut IP'lerini engellemez)
+    fiyatlar = _stooq_fiyat(sembol, periyot)
+    if fiyatlar:
+        return fiyatlar
+
+    raise ValueError(
+        f"'{sembol}' için fiyat verisi alınamadı (yfinance ve Stooq denendi)."
+    )
+
+
+def _yfinance_fiyat(sembol: str, periyot: str, aralik: str) -> list:
+    """yfinance ile kapanış fiyatlarını çeker."""
     yf = _yf()
     tablo = yf.Ticker(sembol).history(period=periyot, interval=aralik)
     if tablo is None or tablo.empty or "Close" not in tablo.columns:
-        raise ValueError(f"'{sembol}' için fiyat verisi bulunamadı.")
-
+        return []
     fiyatlar = []
     for x in tablo["Close"].tolist():
         d = _dec(x)
         if d is not None:
             fiyatlar.append(d)
-    if not fiyatlar:
-        raise ValueError(f"'{sembol}' için geçerli kapanış fiyatı yok.")
     return fiyatlar
+
+
+def _stooq_kod(sembol: str):
+    """yfinance sembolünü Stooq koduna çevirir; uygun değilse None."""
+    s = sembol.strip().lower()
+    if s.endswith(".is"):
+        return s[:-3] + ".tr"     # BIST (en iyi tahmin)
+    if s.endswith("=f"):
+        return None               # vadeli (altın/gümüş) -> Stooq farklı, atla
+    if "-usd" in s:
+        return None               # kripto -> güvenilir eşleme yok, atla
+    if "." in s:
+        return s                  # zaten son ekli
+    return s + ".us"              # ABD hissesi varsay
+
+
+def _stooq_csv_parse(metin: str, son_n=None) -> list:
+    """Stooq CSV metnindeki 'Close' sütununu Decimal listesine çevirir (saf, test edilebilir)."""
+    satirlar = metin.strip().splitlines()
+    if not satirlar or not satirlar[0].lower().startswith("date"):
+        return []
+    basliklar = satirlar[0].split(",")
+    if "Close" not in basliklar:
+        return []
+    idx = basliklar.index("Close")
+
+    fiyatlar = []
+    for satir in satirlar[1:]:
+        parcalar = satir.split(",")
+        if len(parcalar) <= idx:
+            continue
+        ham = parcalar[idx].strip()
+        if ham in ("", "N/D"):
+            continue
+        try:
+            fiyatlar.append(Decimal(ham))
+        except Exception:
+            continue
+    if son_n and len(fiyatlar) > son_n:
+        fiyatlar = fiyatlar[-son_n:]
+    return fiyatlar
+
+
+def _stooq_fiyat(sembol: str, periyot: str) -> list:
+    """Stooq'tan günlük kapanış fiyatlarını çeker (urllib + CSV)."""
+    kod = _stooq_kod(sembol)
+    if kod is None:
+        return []
+    url = f"https://stooq.com/q/d/l/?s={kod}&i=d"
+    try:
+        import urllib.request
+        with urllib.request.urlopen(url, timeout=15) as cevap:
+            metin = cevap.read().decode("utf-8", "replace")
+    except Exception:
+        return []
+    return _stooq_csv_parse(metin, _PERIYOT_GUN.get(periyot, 126))
 
 
 def temel_veri(sembol: str) -> TemelVeri:
