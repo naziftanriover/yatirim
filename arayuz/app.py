@@ -96,12 +96,18 @@ def _stil(df):
             "Nötr": "background-color: #fef9c3;",
         }.get(v, "")
 
-    return (df.style
-            .applymap(renk_deg, subset=["Günlük %"])
-            .applymap(renk_yon, subset=["Görünüm"])
-            .format({"Fiyat": "{:.2f}", "Günlük %": "{:+.2f}",
+    def uygula(styler, fonk, subset):
+        # pandas 2.1+ 'map', eski sürümler 'applymap' kullanır.
+        if hasattr(styler, "map"):
+            return styler.map(fonk, subset=subset)
+        return styler.applymap(fonk, subset=subset)
+
+    s = df.style
+    s = uygula(s, renk_deg, ["Günlük %"])
+    s = uygula(s, renk_yon, ["Görünüm"])
+    return s.format({"Fiyat": "{:.2f}", "Günlük %": "{:+.2f}",
                      "Al ↓": "{:.2f}", "Stop": "{:.2f}", "Kâr-al ↑": "{:.2f}"},
-                    na_rep="—"))
+                    na_rep="—")
 
 
 def pazar_paneli(baslik, semboller, anahtar, temel_dahil=False):
