@@ -35,6 +35,7 @@ from yatirim.uyari.kosul import rsi_uyarisi
 from yatirim.risk.kapi import islem_degerlendir, IslemTeklifi
 from yatirim.yorum.motor import hisse_yorumu
 from yatirim.tarama.panel import tarama_yap
+from yatirim.kagit.cuzdan import KagitCuzdan
 
 
 st.set_page_config(page_title="YATIRIM", page_icon="📊", layout="centered")
@@ -104,6 +105,19 @@ if st.button("🔎 Önerileri Tara"):
                 st.success(f"En güçlü görünen: {en_iyi.sembol} (skor {en_iyi.skor:+d}). "
                            f"Detay için aşağıdan bu sembolü analiz et.")
 
+with st.expander("ℹ️ Skor nasıl hesaplanıyor?"):
+    st.markdown(
+        "Her hisseye **5 sinyale** bakılır; her biri **+1 / 0 / −1** puan:\n\n"
+        "1. **Trend** — Fiyat 20 günlük ortalamanın üstünde +1, altında −1.\n"
+        "2. **RSI** — 30 altı (aşırı satım) +1, 70 üstü (aşırı alım) −1.\n"
+        "3. **MACD** — Momentum yukarı +1, aşağı −1.\n"
+        "4. **Stokastik** — 20 altı +1, 80 üstü −1.\n"
+        "5. **Şirket sağlığı** — Temel skor ≥70 +1, <40 −1.\n\n"
+        "Toplam **−5 ile +5** arası. **≥+2 → 🟢 Olumlu**, **≤−2 → 🔴 Zayıf**, "
+        "arası **🟡 Nötr**. Tablo bu skora göre sıralanır.\n\n"
+        "_Bu bir öneri/özettir, yatırım tavsiyesi değildir; yanılabilir._"
+    )
+
 st.markdown("---")
 st.markdown("## 🔍 Tek Hisse Analizi")
 
@@ -122,15 +136,20 @@ kod = st.text_input("Sembol", placeholder=ipucu)
 periyot = st.selectbox("Fiyat geçmişi süresi", ["3mo", "6mo", "1y", "2y", "5y"], index=1)
 
 if st.button("Analiz Et", type="primary") and kod:
-    sembol = sembol_duzelt(piyasa, kod)
-    with st.spinner(f"{sembol} verisi çekiliyor..."):
-        fiyatlar = guvenli(fiyat_gecmisi, sembol, periyot)
-
-    if not fiyatlar:
-        st.error(f"'{sembol}' için fiyat verisi alınamadı. Sembolü kontrol et "
+    _sembol = sembol_duzelt(piyasa, kod)
+    with st.spinner(f"{_sembol} verisi çekiliyor..."):
+        _fiyatlar = guvenli(fiyat_gecmisi, _sembol, periyot)
+    if not _fiyatlar:
+        st.error(f"'{_sembol}' için fiyat verisi alınamadı. Sembolü kontrol et "
                  "veya internet bağlantına bak.")
-        st.stop()
+    else:
+        # Analizi hafızada tut ki butonlara basınca (yeniden çalışınca) kaybolmasın.
+        st.session_state["analiz"] = {"sembol": _sembol, "fiyatlar": _fiyatlar}
 
+_analiz = st.session_state.get("analiz")
+if _analiz:
+    sembol = _analiz["sembol"]
+    fiyatlar = _analiz["fiyatlar"]
     son_fiyat = fiyatlar[-1]
     st.subheader(f"{sembol}")
     st.metric("Son fiyat", f"{son_fiyat:.2f}")
@@ -234,5 +253,38 @@ if st.button("Analiz Et", type="primary") and kod:
             st.error("UYGUN DEĞİL ❌")
             for i in karar.ihlaller:
                 st.write("- " + i)
+
+    # --- KAĞIT CÜZDAN (sahte parayla dene) -------------------------------
+    st.markdown("### 📒 Kağıt Cüzdan — sahte parayla dene (gerçek para YOK)")
+    if "cuzdan" not in st.session_state:
+        st.session_state["cuzdan"] = KagitCuzdan(Decimal("100000"))
+    cuzdan = st.session_state["cuzdan"]
+
+    kc_adet = st.number_input("Adet (kağıt işlem)", min_value=0.0, value=10.0, step=1.0)
+    al_kol, sat_kol = st.columns(2)
+    if al_kol.button(f"📈 Kağıt AL — {sembol} @ {son_fiyat:.2f}"):
+        try:
+            cuzdan.al(sembol, son_fiyat, Decimal(str(kc_adet)))
+            st.success(f"{kc_adet:g} adet {sembol} alındı (sahte).")
+        except ValueError as e:
+            st.error(str(e))
+    if sat_kol.button(f"📉 Kağıt SAT — {sembol} @ {son_fiyat:.2f}"):
+        try:
+            cuzdan.sat(sembol, son_fiyat, Decimal(str(kc_adet)))
+            st.success(f"{kc_adet:g} adet {sembol} satıldı (sahte).")
+        except ValueError as e:
+            st.error(str(e))
+
+    st.write(f"**Nakit:** {cuzdan.nakit:.2f}")
+    if cuzdan.pozisyonlar:
+        st.write("**Pozisyonların:**")
+        for s, a in cuzdan.pozisyonlar.items():
+            ek = f" → bu fiyatla ≈ {(a * son_fiyat):.2f}" if s == sembol else ""
+            st.write(f"- {s}: {a:g} adet{ek}")
+    else:
+        st.write("_Henüz pozisyon yok._")
+    if st.button("🔄 Kağıt cüzdanı sıfırla (100.000)"):
+        st.session_state["cuzdan"] = KagitCuzdan(Decimal("100000"))
+        st.success("Cüzdan sıfırlandı.")
 
 st.caption("Geçmiş performans geleceğin garantisi değildir. Kararı sen verirsin.")

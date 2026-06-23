@@ -71,9 +71,13 @@ python3 -m unittest discover -s testler -v
 - Güncelleme: `bash guncelle.sh "mesaj"`. Veri: yfinance + Stooq yedeği (canli.py).
 - AKILLI YORUM: `yatirim/yorum/motor.py` — yön + al bölgesi/kâr-al/stop seviyeleri + gerekçe (tavsiye değil).
 - ÖNERİ PANOSU: `yatirim/tarama/panel.py` — izleme listesini tarayıp skora göre sıralar (app.py'de en üstte).
-- SINIR (kullanıcıya net söylendi): otomatik gerçek al-sat YOK (projenin 1. kuralı + güvenlik).
-  Güvenli alternatifler: akıllı yorum, öneri panosu, (planlı) Binance salt-okunur + kağıt trading.
-- 113 test yeşil. `unittest`. Tüm çekirdek mantık saf + test edilmiş.
+- KAĞIT CÜZDAN: `yatirim/kagit/cuzdan.py` — sahte parayla al-sat (arayüzde session_state).
+- Pano açıklaması: app.py'de "Skor nasıl hesaplanıyor?" expander.
+- KULLANICI DURUMU: KKTC'de yaşıyor; BTCTurk/Midas TC ikametgâhı istediği için kapalı.
+  Sadece Binance Global açık. Bu yüzden gerçek-para işlem zaten zor → kağıt cüzdan öne çıktı.
+- SINIR (net): otomatik gerçek al-sat YOK (projenin 1. kuralı + güvenlik). Planlı: Binance SALT-OKUNUR
+  (portföy görüntüleme; emir YOK), API anahtarı kullanıcıdan.
+- 120 test yeşil. `unittest`. Tüm çekirdek mantık saf + test edilmiş.
 - CANLI VERİ eklendi: `yatirim/veri/canli.py` (yfinance) — fiyat geçmişi + temel veri.
   ABD/BIST/kripto/metal. BIST için `bist_sembol()` (.IS eki).
 - TEKNİK genişledi: SMA, EMA, RSI, MACD, Bollinger, Stokastik.
