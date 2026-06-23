@@ -1,0 +1,8 @@
+# YATIRIM — dış bağımlılıklar
+# Kurmak için (proje kökünde):  pip install -r requirements.txt
+#
+# NOT: Çekirdek hesap/analiz ve testler bu paketler OLMADAN da çalışır
+# (sadece Python yeterli). Bu paketler canlı veri + web arayüzü içindir.
+
+yfinance>=0.2      # canlı fiyat ve temel veri (internet ister)
+streamlit>=1.30    # web arayüzü (telefon tarayıcısından da açılır)

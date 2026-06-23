@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Sanal ortam
+venv/
+.venv/
+env/
+
+# Streamlit gizli ayarlar (API anahtarı vb. — ASLA yüklenmez)
+.streamlit/secrets.toml
+
+# İşletim sistemi
+.DS_Store
+Thumbs.db
+
+# Editör
+.vscode/
+.idea/
+
+# Önbelleğe alınmış fiyat verileri (ileride eklenirse)
+*.cache
+veri_onbellek/
