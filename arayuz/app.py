@@ -33,6 +33,7 @@ from yatirim.teknik.stokastik import stokastik_k
 from yatirim.temel.saglik import sirket_sagligi
 from yatirim.uyari.kosul import rsi_uyarisi
 from yatirim.risk.kapi import islem_degerlendir, IslemTeklifi
+from yatirim.yorum.motor import hisse_yorumu
 
 
 st.set_page_config(page_title="YATIRIM", page_icon="📊", layout="centered")
@@ -123,6 +124,7 @@ if st.button("Analiz Et", type="primary") and kod:
 
     # --- TEMEL ANALİZ ----------------------------------------------------
     st.markdown("### 🏢 Temel Analiz — Şirket Sağlığı")
+    saglik_skoru = None
     tveri = guvenli(temel_veri, sembol)
     if tveri is None:
         st.warning("Temel veri alınamadı (bu sembol için olmayabilir, örn. kripto/metal).")
@@ -131,11 +133,30 @@ if st.button("Analiz Et", type="primary") and kod:
         if saglik.durum == "Veri yetersiz":
             st.warning("Bu sembol için yeterli temel veri yok.")
         else:
+            saglik_skoru = saglik.skor
             st.metric("Sağlık skoru", f"{saglik.skor}/100", saglik.durum)
             if saglik.guclu:
                 st.success("Güçlü yönler:\n- " + "\n- ".join(saglik.guclu))
             if saglik.zayif:
                 st.error("Zayıf yönler:\n- " + "\n- ".join(saglik.zayif))
+
+    # --- AKILLI YORUM ----------------------------------------------------
+    st.markdown("### 🤖 Akıllı Yorum")
+    yorum = guvenli(hisse_yorumu, fiyatlar, saglik_skoru)
+    if yorum is None:
+        st.warning("Yorum üretmek için yeterli veri yok.")
+    else:
+        renk = {"Olumlu": "🟢", "Zayıf": "🔴", "Nötr": "🟡"}.get(yorum.yon, "")
+        st.metric("Genel görünüm", f"{renk} {yorum.yon}", f"sinyal skoru {yorum.skor:+d}")
+        a1, a2, a3 = st.columns(3)
+        a1.metric("Al bölgesi", f"{yorum.al_bolgesi[0]:.2f}–{yorum.al_bolgesi[1]:.2f}")
+        a2.metric("Kâr-al hedefi", f"{yorum.kar_al_hedefi:.2f}")
+        a3.metric("Stop seviyesi", f"{yorum.stop_seviyesi:.2f}")
+        if yorum.gerekceler:
+            st.write("**Gerekçeler:**")
+            for g in yorum.gerekceler:
+                st.write("- " + g)
+        st.warning(yorum.uyari)
 
     # --- RİSK KAPISI -----------------------------------------------------
     st.markdown("### 🛡️ Risk Kontrolü (işlem teklifini denetle)")
