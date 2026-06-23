@@ -37,6 +37,8 @@ from yatirim.kagit.cuzdan import KagitCuzdan
 from yatirim.borsa.binance_oku import bakiye_getir, binance_islem_linki
 from yatirim.emir.ozet import emir_ozeti
 from yatirim.evren.listeler import KRIPTO, ABD, BIST100
+from yatirim.evren.isimler import isim
+import streamlit.components.v1 as components
 
 
 st.set_page_config(page_title="YATIRIM", page_icon="📊", layout="wide")
@@ -67,6 +69,7 @@ def pazar_tara(semboller_tuple, temel_dahil=False, periyot="3mo"):
     for s in sonuc:
         satirlar.append({
             "Sembol": s.sembol,
+            "İsim": isim(s.sembol),
             "Fiyat": float(s.fiyat) if s.fiyat is not None else None,
             "Günlük %": float(s.gunluk_degisim) if s.gunluk_degisim is not None else None,
             "Görünüm": s.yon,
@@ -146,6 +149,70 @@ def pazar_paneli(baslik, semboller, anahtar, temel_dahil=False):
             st.write(", ".join(df_err["Sembol"].tolist()))
     st.caption("Skor 5 sinyalden gelir (trend, RSI, MACD, Stokastik, sağlık). "
                "Öneri/özettir, yatırım tavsiyesi değildir.")
+    detay_secimi(sonuc, anahtar)
+
+
+def detay_secimi(sonuc, anahtar):
+    """Tablonun altına 'şirket/coin verisi gör' seçim kutusu koyar."""
+    secenekler = [f'{r["Sembol"]} — {r.get("İsim", "")}'.strip(" —")
+                  for r in sonuc if not r.get("_hata")]
+    if not secenekler:
+        return
+    secim = st.selectbox("🔎 Şirket/coin verisini gör", ["—"] + secenekler,
+                         key=f"sec_{anahtar}")
+    if secim and secim != "—":
+        detay_goster(secim.split(" — ")[0])
+
+
+def detay_goster(sembol):
+    """Seçilen sembol için temel/şirket verisini gösterir."""
+    with st.spinner(f"{sembol} verisi çekiliyor..."):
+        tveri = guvenli(temel_veri, sembol)
+    st.markdown(f"**{isim(sembol)}** ({sembol})")
+    if tveri is not None:
+        sg = sirket_sagligi(tveri)
+        if sg.durum != "Veri yetersiz":
+            st.metric("Şirket sağlığı", f"{sg.skor}/100", sg.durum)
+            if sg.guclu:
+                st.success("Güçlü: " + ", ".join(sg.guclu))
+            if sg.zayif:
+                st.error("Zayıf: " + ", ".join(sg.zayif))
+            st.caption("Grafik + tüm göstergeler için sembolü '🔍 Tek Analiz'e yaz.")
+            return
+    st.info("Bu sembolde temel veri yok/yetersiz (kripto/metal olabilir). "
+            "Tam analiz için '🔍 Tek Analiz' sekmesini kullan.")
+
+
+def ticker_ciz():
+    """Üstte akan canlı fiyat şeridi (majör coinler)."""
+    semboller = ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "XRP-USD", "AVAX-USD"]
+    veri = guvenli(pazar_tara, tuple(semboller), False, "1mo") or []
+    parcalar = []
+    for r in veri:
+        if r.get("_hata") or r.get("Fiyat") is None:
+            continue
+        deg = r.get("Günlük %") or 0.0
+        renk = "#22c55e" if deg >= 0 else "#ef4444"
+        ok = "▲" if deg >= 0 else "▼"
+        ad = r["Sembol"].replace("-USD", "")
+        parcalar.append(
+            f'<span style="margin:0 26px;">{ad} '
+            f'<b>{r["Fiyat"]:.2f}</b> '
+            f'<span style="color:{renk}">{ok} {abs(deg):.2f}%</span></span>'
+        )
+    if not parcalar:
+        return
+    icerik = "".join(parcalar)
+    html = (
+        '<div style="overflow:hidden;white-space:nowrap;background:#0f172a;'
+        'color:#e5e7eb;border-radius:10px;padding:10px 0;font-family:sans-serif;'
+        'font-size:15px;">'
+        '<div style="display:inline-block;padding-left:100%;'
+        'animation:kay 28s linear infinite;">' + icerik + icerik + '</div></div>'
+        '<style>@keyframes kay{0%{transform:translateX(0)}'
+        '100%{transform:translateX(-50%)}}</style>'
+    )
+    components.html(html, height=46)
 
 
 # =========================================================================
@@ -153,6 +220,7 @@ def pazar_paneli(baslik, semboller, anahtar, temel_dahil=False):
 # =========================================================================
 st.title("📊 YATIRIM")
 st.caption("Kişisel yatırım karar-destek paneli — öneri ve uyarı verir, asla otomatik işlem açmaz.")
+ticker_ciz()
 
 sekme_oneri, sekme_kripto, sekme_bist, sekme_abd, sekme_analiz, sekme_binance = st.tabs(
     ["📋 Öneriler", "🪙 Kripto", "🇹🇷 BIST", "🇺🇸 ABD", "🔍 Tek Analiz", "🔐 Binance"]
@@ -181,6 +249,7 @@ with sekme_oneri:
         st.markdown("#### 🟢 En güçlü görünen ilk 15")
         st.dataframe(_stil(df_ok.head(15)), use_container_width=True, hide_index=True)
         st.caption("Detaylı bakmak için sembolü '🔍 Tek Analiz' sekmesine yaz.")
+        detay_secimi(df_ok.head(15).to_dict("records"), "oneri")
 
 
 # =========================================================================
