@@ -340,10 +340,18 @@ if not _bn_key or not _bn_secret:
     )
 else:
     if st.button("💼 Bakiyemi Getir"):
-        with st.spinner("Binance'ten bakiye okunuyor..."):
-            bakiyeler = guvenli(bakiye_getir, _bn_key, _bn_secret)
+        bakiyeler = None
+        try:
+            with st.spinner("Binance'ten bakiye okunuyor..."):
+                bakiyeler = bakiye_getir(_bn_key, _bn_secret)
+        except Exception as e:
+            st.error(f"Bakiye alınamadı: {e}")
+            if "restricted" in str(e).lower() or "451" in str(e):
+                st.warning("Bu hata coğrafi engel demek: Streamlit'in sunucusu Binance'e "
+                           "kapalı bir bölgede. Çözüm: uygulamayı kendi bilgisayarında "
+                           "çalıştır (yerel IP'n ile). Birlikte kurarız.")
         if bakiyeler is None:
-            st.error("Bakiye alınamadı. Anahtarı/izinleri ve internet bağlantısını kontrol et.")
+            pass  # hata yukarıda gösterildi
         elif not bakiyeler:
             st.info("Hesapta sıfırdan büyük bakiye görünmüyor.")
         else:
