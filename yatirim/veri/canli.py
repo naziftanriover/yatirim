@@ -161,7 +161,16 @@ def temel_veri(sembol: str) -> TemelVeri:
     sirket_sagligi bu durumu zaten zarifçe yönetir.
     """
     yf = _yf()
-    bilgi = yf.Ticker(sembol).info or {}
+    # Yahoo bazen (özellikle bulutta) limitleyip boş döner; 2 kez deneriz.
+    bilgi = {}
+    for _ in range(2):
+        try:
+            t = yf.Ticker(sembol)
+            bilgi = (t.get_info() if hasattr(t, "get_info") else t.info) or {}
+        except Exception:
+            bilgi = {}
+        if bilgi:
+            break
 
     # yfinance debtToEquity'yi YÜZDE verir (50 -> 0.5). Oranımıza çeviriyoruz.
     borc_oz_ham = bilgi.get("debtToEquity")

@@ -185,7 +185,8 @@ def detay_goster(sembol):
 
 def ticker_ciz():
     """Üstte akan canlı fiyat şeridi (majör coinler)."""
-    semboller = ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "XRP-USD", "AVAX-USD"]
+    semboller = ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD",
+                 "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL"]
     veri = guvenli(pazar_tara, tuple(semboller), False, "1mo") or []
     parcalar = []
     for r in veri:
@@ -264,7 +265,7 @@ with sekme_bist:
     pazar_paneli("🇹🇷 BIST100", BIST100, "bist", temel_dahil=False)
 
 with sekme_abd:
-    pazar_paneli("🇺🇸 ABD", ABD, "abd", temel_dahil=True)
+    pazar_paneli("🇺🇸 ABD", ABD, "abd", temel_dahil=False)
 
 
 # =========================================================================
