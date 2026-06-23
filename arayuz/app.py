@@ -93,9 +93,9 @@ def _stil(df):
 
     def renk_yon(v):
         return {
-            "Olumlu": "background-color: #dcfce7;",
-            "Zayıf": "background-color: #fee2e2;",
-            "Nötr": "background-color: #fef9c3;",
+            "Olumlu": "background-color: #dcfce7; color: #065f46; font-weight: 600;",
+            "Zayıf": "background-color: #fee2e2; color: #991b1b; font-weight: 600;",
+            "Nötr": "background-color: #fef9c3; color: #854d0e; font-weight: 600;",
         }.get(v, "")
 
     def uygula(styler, fonk, subset):
