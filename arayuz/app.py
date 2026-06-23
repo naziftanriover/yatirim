@@ -36,7 +36,8 @@ from yatirim.risk.kapi import islem_degerlendir, IslemTeklifi
 from yatirim.yorum.motor import hisse_yorumu
 from yatirim.tarama.panel import tarama_yap
 from yatirim.kagit.cuzdan import KagitCuzdan
-from yatirim.borsa.binance_oku import bakiye_getir
+from yatirim.borsa.binance_oku import bakiye_getir, binance_islem_linki
+from yatirim.emir.ozet import emir_ozeti
 
 
 st.set_page_config(page_title="YATIRIM", page_icon="📊", layout="centered")
@@ -224,6 +225,29 @@ if _analiz:
             for g in yorum.gerekceler:
                 st.write("- " + g)
         st.warning(yorum.uyari)
+
+        # --- EMİR ÖZETİ (hazır emir; program emir VERMEZ) ----------------
+        st.markdown("#### 📝 Emir Özeti — hazır; emri SEN verirsin")
+        emir_sermaye = st.number_input(
+            "Toplam sermayen", min_value=0.0, value=100000.0, step=1000.0, key="emir_sermaye")
+        ozet = guvenli(emir_ozeti, yorum.yon, Decimal(str(emir_sermaye)),
+                       son_fiyat, yorum.stop_seviyesi, yorum.kar_al_hedefi)
+        if ozet is None:
+            st.caption("Emir özeti üretilemedi (giriş/stop uygun değil).")
+        else:
+            st.write(f"**Öneri:** {ozet.taraf}")
+            e1, e2, e3 = st.columns(3)
+            e1.metric("Giriş ≈", f"{ozet.giris:.2f}")
+            e2.metric("Stop", f"{ozet.stop:.2f}")
+            e3.metric("Kâr-al", f"{ozet.kar_al:.2f}")
+            st.write(f"**Önerilen adet:** {ozet.onerilen_adet}  —  "
+                     f"riske atılan ≈ {ozet.riske_atilan} (ana paranın %{ozet.risk_yuzde}'i)")
+            _link = binance_islem_linki(sembol)
+            if _link:
+                st.link_button("🔗 Binance'te işlem sayfasını aç", _link)
+            else:
+                st.caption("Bu sembol Binance'te olmayabilir (örn. hisse); emri kendi aracı kurumunda gir.")
+            st.info(ozet.not_)
 
     # --- RİSK KAPISI -----------------------------------------------------
     st.markdown("### 🛡️ Risk Kontrolü (işlem teklifini denetle)")

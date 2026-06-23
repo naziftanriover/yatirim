@@ -24,6 +24,19 @@ from urllib.parse import urlencode
 BINANCE_BASE = "https://api.binance.com"
 
 
+def binance_islem_linki(sembol: str):
+    """Kripto sembolü için Binance işlem sayfası linki; hisse ise None.
+
+    Örn. 'BTC-USD' -> Binance'te BTC_USDT işlem sayfası. Program emir VERMEZ;
+    bu yalnızca kullanıcının kendi elinle işlem yapması için bir kısayoldur.
+    """
+    s = sembol.strip().upper()
+    if s.endswith("-USD"):
+        baz = s[:-4]
+        return f"https://www.binance.com/tr/trade/{baz}_USDT"
+    return None
+
+
 def imzala(sorgu: str, secret: str) -> str:
     """Sorgu dizesini HMAC-SHA256 ile imzalar (Binance'in beklediği biçim)."""
     return hmac.new(secret.encode(), sorgu.encode(), hashlib.sha256).hexdigest()
