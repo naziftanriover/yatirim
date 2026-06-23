@@ -32,8 +32,7 @@ from yatirim.temel.saglik import sirket_sagligi
 from yatirim.uyari.kosul import rsi_uyarisi
 from yatirim.risk.kapi import islem_degerlendir, IslemTeklifi
 from yatirim.yorum.motor import hisse_yorumu
-from yatirim.tarama.panel import tarama_yap
-from yatirim.kagit.cuzdan import KagitCuzdan
+from yatirim.tarama.panel import tarama_yap, gunluk_degisim_yuzde
 from yatirim.borsa.binance_oku import bakiye_getir, binance_islem_linki
 from yatirim.emir.ozet import emir_ozeti
 from yatirim.evren.listeler import KRIPTO, ABD, BIST100
@@ -223,6 +222,17 @@ st.title("📊 YATIRIM")
 st.caption("Kişisel yatırım karar-destek paneli — öneri ve uyarı verir, asla otomatik işlem açmaz.")
 ticker_ciz()
 
+with st.expander("ℹ️ Fiyatlar gerçek mi? Nereden ve ne zaman çekiliyor?"):
+    st.markdown(
+        "- **Kaynak:** yfinance (Yahoo Finance) — gerçek piyasa verisi. Yahoo engellerse "
+        "**Stooq** yedeği devreye girer.\n"
+        "- **Ne zaman:** 'Tara / Yenile'ye bastığında çekilir; sonra **5 dakika önbellekte** "
+        "tutulur (tekrar bakınca anında gelsin diye). Yeni veri için tekrar 'Tara / Yenile'.\n"
+        "- **Tazelik:** Günlük kapanış bazlı; ücretsiz veride genelde **~15 dk gecikmeli**, "
+        "saniyelik (tick) canlı değildir.\n"
+        "- **Günlük %:** Bugünkü fiyatın bir önceki kapanışa göre yüzde değişimi (yeşil artış, kırmızı düşüş)."
+    )
+
 sekme_oneri, sekme_kripto, sekme_bist, sekme_abd, sekme_analiz, sekme_binance = st.tabs(
     ["📋 Öneriler", "🪙 Kripto", "🇹🇷 BIST", "🇺🇸 ABD", "🔍 Tek Analiz", "🔐 Binance"]
 )
@@ -304,8 +314,10 @@ with sekme_analiz:
         sembol = _analiz["sembol"]
         fiyatlar = _analiz["fiyatlar"]
         son_fiyat = fiyatlar[-1]
-        st.subheader(sembol)
-        st.metric("Son fiyat", f"{son_fiyat:.2f}")
+        deg = gunluk_degisim_yuzde(fiyatlar)
+        st.subheader(f"{isim(sembol)} ({sembol})")
+        st.metric("Son fiyat", f"{son_fiyat:.2f}",
+                  f"{deg:+.2f}% bugün" if deg is not None else None)
         st.line_chart([float(f) for f in fiyatlar])
 
         # Teknik
@@ -403,30 +415,6 @@ with sekme_analiz:
                 st.error("UYGUN DEĞİL ❌")
                 for i in karar.ihlaller:
                     st.write("- " + i)
-
-        # Kağıt cüzdan
-        st.markdown("#### 📒 Kağıt Cüzdan — sahte parayla dene")
-        if "cuzdan" not in st.session_state:
-            st.session_state["cuzdan"] = KagitCuzdan(Decimal("100000"))
-        cuzdan = st.session_state["cuzdan"]
-        kc_adet = st.number_input("Adet (kağıt)", min_value=0.0, value=10.0, step=1.0)
-        kcol = st.columns(2)
-        if kcol[0].button(f"📈 Kağıt AL @ {son_fiyat:.2f}"):
-            try:
-                cuzdan.al(sembol, son_fiyat, Decimal(str(kc_adet)))
-                st.success("Alındı (sahte).")
-            except ValueError as e:
-                st.error(str(e))
-        if kcol[1].button(f"📉 Kağıt SAT @ {son_fiyat:.2f}"):
-            try:
-                cuzdan.sat(sembol, son_fiyat, Decimal(str(kc_adet)))
-                st.success("Satıldı (sahte).")
-            except ValueError as e:
-                st.error(str(e))
-        st.write(f"**Nakit:** {cuzdan.nakit:.2f}")
-        if cuzdan.pozisyonlar:
-            st.write("**Pozisyonlar:** " + ", ".join(
-                f"{s}: {a:g}" for s, a in cuzdan.pozisyonlar.items()))
 
 
 # =========================================================================
