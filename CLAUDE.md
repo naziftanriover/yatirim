@@ -75,9 +75,12 @@ python3 -m unittest discover -s testler -v
 - Pano açıklaması: app.py'de "Skor nasıl hesaplanıyor?" expander.
 - KULLANICI DURUMU: KKTC'de yaşıyor; BTCTurk/Midas TC ikametgâhı istediği için kapalı.
   Sadece Binance Global açık. Bu yüzden gerçek-para işlem zaten zor → kağıt cüzdan öne çıktı.
-- SINIR (net): otomatik gerçek al-sat YOK (projenin 1. kuralı + güvenlik). Planlı: Binance SALT-OKUNUR
-  (portföy görüntüleme; emir YOK), API anahtarı kullanıcıdan.
-- 120 test yeşil. `unittest`. Tüm çekirdek mantık saf + test edilmiş.
+- SINIR (net): otomatik gerçek al-sat YOK (projenin 1. kuralı + güvenlik).
+- BINANCE SALT-OKUNUR: `yatirim/borsa/binance_oku.py` — imzalı GET /api/v3/account; sadece bakiye okur,
+  EMİR YOK. İmza resmî test vektörüyle doğrulandı. Anahtar Streamlit secrets'ta (BINANCE_API_KEY/SECRET),
+  yalnız 'Enable Reading' izinli. NOT: Streamlit Cloud ABD IP'li olabilir → Binance API coğrafi engelleyebilir;
+  o durumda app'i kullanıcının kendi makinesinde çalıştır (yerel IP).
+- 122 test yeşil. `unittest`. Tüm çekirdek mantık saf + test edilmiş.
 - CANLI VERİ eklendi: `yatirim/veri/canli.py` (yfinance) — fiyat geçmişi + temel veri.
   ABD/BIST/kripto/metal. BIST için `bist_sembol()` (.IS eki).
 - TEKNİK genişledi: SMA, EMA, RSI, MACD, Bollinger, Stokastik.

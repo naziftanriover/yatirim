@@ -36,6 +36,7 @@ from yatirim.risk.kapi import islem_degerlendir, IslemTeklifi
 from yatirim.yorum.motor import hisse_yorumu
 from yatirim.tarama.panel import tarama_yap
 from yatirim.kagit.cuzdan import KagitCuzdan
+from yatirim.borsa.binance_oku import bakiye_getir
 
 
 st.set_page_config(page_title="YATIRIM", page_icon="📊", layout="centered")
@@ -287,4 +288,47 @@ if _analiz:
         st.session_state["cuzdan"] = KagitCuzdan(Decimal("100000"))
         st.success("Cüzdan sıfırlandı.")
 
+def _gizli(anahtar: str) -> str:
+    """Streamlit secrets'tan değer okur; yoksa boş döner (çökmeden)."""
+    try:
+        return st.secrets.get(anahtar, "")
+    except Exception:
+        return ""
+
+
+# --- BINANCE PORTFÖYÜ (SALT-OKUNUR) --------------------------------------
+st.markdown("---")
+st.markdown("## 🔐 Binance Portföyü (salt-okunur)")
+st.caption("Program bakiyeni yalnızca GÖRÜNTÜLER; senin adına ASLA emir vermez, "
+           "para çekmez. API anahtarın da yalnız 'okuma' izinli olmalı.")
+
+_bn_key = _gizli("BINANCE_API_KEY")
+_bn_secret = _gizli("BINANCE_SECRET")
+
+if not _bn_key or not _bn_secret:
+    st.info(
+        "Henüz bağlı değil. Bağlamak için:\n\n"
+        "1. Binance → API Management → **Create API** → izinlerden SADECE "
+        "**Enable Reading** açık olsun (Trading & Withdrawals KAPALI).\n"
+        "2. Streamlit uygulaman → **Manage app → Settings → Secrets**'a şunları ekle:\n"
+        "```\nBINANCE_API_KEY = \"...\"\nBINANCE_SECRET = \"...\"\n```\n"
+        "3. Kaydet; uygulama yenilenince burada **Bakiyemi Getir** butonu çıkar."
+    )
+else:
+    if st.button("💼 Bakiyemi Getir"):
+        with st.spinner("Binance'ten bakiye okunuyor..."):
+            bakiyeler = guvenli(bakiye_getir, _bn_key, _bn_secret)
+        if bakiyeler is None:
+            st.error("Bakiye alınamadı. Anahtarı/izinleri ve internet bağlantısını kontrol et.")
+        elif not bakiyeler:
+            st.info("Hesapta sıfırdan büyük bakiye görünmüyor.")
+        else:
+            satirlar = [
+                {"Varlık": a, "Serbest": f"{s:f}", "Kilitli": f"{k:f}"}
+                for a, s, k in bakiyeler
+            ]
+            st.dataframe(satirlar, use_container_width=True)
+            st.caption("Yalnızca görüntüleme. Emir vermek istersen kendi elinle Binance'te yaparsın.")
+
+st.markdown("---")
 st.caption("Geçmiş performans geleceğin garantisi değildir. Kararı sen verirsin.")
